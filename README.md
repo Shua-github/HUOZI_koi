@@ -8,16 +8,23 @@
 ### 部署步骤
 1. 克隆项目仓库：
 ```bash
-git clone <仓库地址>
-cd <项目目录>
+git clone https://github.com/Shua-github/HUOZI_koi.git
+cd HUOZI_koi
 ```
-2. 执行脚本(`Windows`请执行`Windows.bat`,`macos`和`liunx`请执行`Macos丨Liunx.sh`)
+2. 执行脚本
+- `Windows`请执行`Windows.bat`
+
+- `Macos`和`Liunx`请执行`Macos丨Liunx.sh`
 
 3. 修改配置：
 - 如果有需要，你可以根据 `config.yaml` 修改配置
 
-4. 查看API文档：
+4. 运行程序
+- ```python app.py```
+
+5. 查看API文档：
 - 在浏览器中访问 [http://127.0.0.1:8989/docs](http://127.0.0.1:8989/docs) (默认端口为 8989，可以在 `config.yaml` 中更改)
+
 
 ## 使用 API 调用
 你可以通过 API 来生成音频，以下是使用示例：

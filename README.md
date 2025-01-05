@@ -1,55 +1,29 @@
 
 # HUOZI
 电棍活字印刷后端
-基于 Flask 框架
+基于 Fsatapi 框架
 ## 食用方法
 ### Python 版本
-- 3.8.x
+- 理论`3.8`以上均可(我是使用`3.12.6`)
 ### 部署步骤
 1. 克隆项目仓库：
 ```bash
 git clone <仓库地址>
 cd <项目目录>
 ```
-2. 创建虚拟环境并激活：
+2. 执行脚本(`Windows`请执行`Windows.bat`,`macos`和`liunx`请执行`Macos丨Liunx.sh`)
 
-```bash
-python -m venv venv
-```
+3. 修改配置：
+- 如果有需要，你可以根据 `config.yaml` 修改配置
 
-**Windows**
-```cmd
-venv\Scripts\activate.bat
-```
+4. 查看API文档：
+- 在浏览器中访问 [http://127.0.0.1:8989/docs](http://127.0.0.1:8989/docs) (默认端口为 8989，可以在 `config.yaml` 中更改)
 
-**Linux**
-```bash
-source ./venv/bin/activate  
-```
-
-
-3. 安装必要的构建工具：
-```bash
-pip install setuptools wheel
-```
-4. 安装依赖模块：
-```bash
-pip install -r requirements.txt
-```
-5. 配置文件路径：
-- 如果有需要，你可以根据 `settings.json` 修改文件路径（注意，Linux 与 Windows 路径写法不一致）
-6. 运行服务：
-
-```cmd
-python app.py
-```
-
-7. 访问服务：
-- 在浏览器中访问 [http://127.0.0.1:8989](http://127.0.0.1:8989) (默认端口为 8989，可以在 `app.py` 中更改)
 ## 使用 API 调用
 你可以通过 API 来生成音频，以下是使用示例：
 ### API 端点
-- `GET /api/make`
+- `GET,POST /api/make`
+
 ### 请求参数
 - `text` (字符串): 要转换的文本
 - `inYsddMode` (布尔值): 是否启用 Ysdd 模式 (`true`/`false`)
@@ -68,7 +42,7 @@ http://127.0.0.1:8989/api/make?text=你好啊&inYsddMode=false&norm=false&revers
 {
     "code": 200,
     "id": "<生成的文件ID>",
-    "file_path": "<生成的文件路径>"
+    "file_path": "<生成的文件url>"
 }
 ```
 - 错误响应：
@@ -78,6 +52,3 @@ http://127.0.0.1:8989/api/make?text=你好啊&inYsddMode=false&norm=false&revers
     "message": "<错误信息>"
 }
 ```
-## 其他注意事项
-- 请确保在使用 API 时正确处理路径及参数。
-- 项目默认使用 8989 端口，你可以在 `app.py` 文件中更改端口配置。

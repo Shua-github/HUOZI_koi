@@ -39,5 +39,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: app  # Artifact名称
-          path: dist/
+          path: build/
           include-hidden-files: true         # 上传dist文件夹中的所有文件

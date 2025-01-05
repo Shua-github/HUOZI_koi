@@ -1,161 +1,156 @@
-from flask import Flask, request, render_template, make_response, jsonify, url_for
+from fastapi import FastAPI, Request, HTTPException, Query, Form
+from fastapi.responses import FileResponse, JSONResponse
 from huoZiYinShua import *
+from pathlib import Path
 import time
 import secrets
-from os import remove, listdir
-from threading import Thread, Lock
+from threading import Lock
 import logging
 import sys
-import os
+import yaml
+app = FastAPI()
 
-# 临时文件存放目录
-tempOutputPath = "./static/tempAudioOutput/"
-# 确保目录存在
-if not os.path.exists(tempOutputPath):
-    os.makedirs(tempOutputPath)
+# 读取配置
+with open("config.yaml", "r",encoding="utf-8") as file:
+    config = yaml.safe_load(file)
+
+# 临时文件目录
+temp_output_path = Path(config["paths"]["temp_output_path"])
+temp_output_path.mkdir(parents=True, exist_ok=True)
+
+# 日志文件
+log_path = Path(config["logging"]["log_path"])
+log_path.mkdir(parents=True, exist_ok=True)
+log_path_name = log_path / config["logging"]["log_name"]
+
+# 印刷音频音频
+audio_source = config["paths"]["audio_path"]
 
 # 进程锁
 locker = Lock()
-queueRecord = {
-    "time": 0,
-    "place": 0
-}
+queue_record = {"time": 0, "place": 0}
 
-# 启动日志
-hzysLogger = logging.getLogger()
-hzysFileHandler = logging.FileHandler("record.log", encoding="utf8", mode="a")
-hzysFormatter = logging.Formatter("%(asctime)s, %(message)s")
-hzysFileHandler.setFormatter(hzysFormatter)
-hzysLogger.addHandler(hzysFileHandler)
-hzysLogger.addHandler(logging.StreamHandler(sys.stdout))
-hzysLogger.setLevel(logging.DEBUG)
+# 日志设置
+hzysLogger = logging.getLogger("hzys")
+if not hzysLogger.handlers:
+    hzysFileHandler = logging.FileHandler(f"{log_path_name}", encoding=config["logging"]["encoding"], mode="a")
+    hzysFormatter = logging.Formatter(config["logging"]["format"])
+    hzysFileHandler.setFormatter(hzysFormatter)
+    hzysLogger.addHandler(hzysFileHandler)
+    hzysLogger.addHandler(logging.StreamHandler(sys.stdout))
+    level = getattr(logging, config["logging"]["level"].upper(), None)
+hzysLogger.setLevel(level)
 
-# 生成ID
+# 生成唯一 ID
 def makeid():
-    locker.acquire()
-    currentSec = str(int(time.time()))
-    # 若进入下一秒，重置次序
-    if queueRecord["time"] != currentSec:
-        queueRecord["time"] = currentSec
-        queueRecord["place"] = 0
-    # ID=时间+次序+随机数
-    id = currentSec + "_" + str(queueRecord["place"]) + "_" + secrets.token_hex(8)
-    queueRecord["place"] += 1
-    locker.release()
-    return id
+    with locker:
+        current_sec = str(int(time.time()))
+        if queue_record["time"] != current_sec:
+            queue_record["time"] = current_sec
+            queue_record["place"] = 0
+        id = f"{current_sec}_{queue_record['place']}_{secrets.token_hex(8)}"
+        queue_record["place"] += 1
+        return id
 
-# 清理临时文件
-def clearCache():
+# 清理缓存
+def clear_cache():
     while True:
-        currentTime = int(time.time())  # 当前时间
-        # 输出目录下的所有文件
-        for fileName in listdir(tempOutputPath):
-            # 文件名符合格式
+        current_time = int(time.time())
+        for file_name in temp_output_path.iterdir():
             try:
-                timeCreated = int(fileName.split("_")[0])  # 创建时间
-                if (currentTime - timeCreated) > 600:  # 间隔时间(秒)
-                    if fileName.endswith(".wav"):
-                        remove(tempOutputPath + fileName)
-            # 若文件名不符合格式，(currentTime - timeCreated)会报错
+                time_created = int(file_name.stem.split("_")[0])
+                if current_time - time_created > config["cleanup"]["interval"]:
+                    file_name.unlink()
             except:
                 pass
-        time.sleep(60)
+        time.sleep(config["cleanup"]["file_lifetime"])
 
-# 核心代码
-app = Flask(__name__, static_folder='static')
+# 文件下载接口
+@app.get("/file/{file_name}")
+async def get_audio(file_name: str):
+    file_path = temp_output_path / file_name
+    if file_path.exists():
+        return FileResponse(
+            path=file_path,
+            media_type="audio/wav",
+            filename=file_name,
+        )
+    raise HTTPException(status_code=404, detail="没有这个文件")
 
-@app.route('/')
-def index():
-    return render_template("home.html")
+# 处理生成音频请求
+@app.get("/api/make")
+async def api_make_get(
+    request:Request,
+    text: str = Query(...),
+    inYsddMode: bool = Query(True),
+    norm: bool = Query(True),
+    reverse: bool = Query(True),
+    speedMult: float = Query(1.0),
+    pitchMult: float = Query(1.0),
+):
+    return await process_make_request(request, text, inYsddMode, norm, reverse, speedMult, pitchMult)
 
-# 用户发出生成音频的请求（POST方法）
-@app.route('/make', methods=['POST'])
-def HZYSS():
-    # 生成选项
-    rawData = request.form.get("text")
-    inYsddMode = (request.form.get("inYsddMode") == "true")
-    norm = (request.form.get("norm") == "true")
-    reverse = (request.form.get("reverse") == "true")
-    speedMult = float(request.form.get("speedMult"))
-    pitchMult = float(request.form.get("pitchMult"))
-    # 记录日志
-    app.logger.debug("%s", request.form)
-    # 特殊情况不予生成音频并返回错误代码
-    if len(rawData) > 100:
-        return jsonify({"code": 400, "message": "憋刷辣！"}), 400
-    if (speedMult < 0.5) or (speedMult > 2) or (pitchMult < 0.5) or (pitchMult > 2):
-        return jsonify({"code": 400, "message": "你在搞什么飞机？"}), 400
+# 处理生成音频请求
+@app.post("/api/make")
+async def api_make_post(
+    request: Request,
+    text: str = Form(...),
+    inYsddMode: bool = Form(True),
+    norm: bool = Form(True),
+    reverse: bool = Form(True),
+    speedMult: float = Form(1.0),
+    pitchMult: float = Form(1.0),
+):
+    return await process_make_request(request, text, inYsddMode, norm, reverse, speedMult, pitchMult)
+
+async def process_make_request(
+    request: Request,
+    text: str,
+    inYsddMode: bool,
+    norm: bool,
+    reverse: bool,
+    speedMult: float,
+    pitchMult: float,
+):
+    # 检查输入文本长度
+    if not text or len(text) > 100:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "憋刷辣!"})
+
+    # 检查参数范围
+    if speedMult < 0.5 or speedMult > 2 or pitchMult < 0.5 or pitchMult > 2:
+        return JSONResponse(status_code=400, content={"code": 400, "message": "你在搞什么飞机?"})
+
     try:
-        # 获取ID
+        # 生成 ID 和处理音频
         id = makeid()
-        # 活字印刷实例
-        HZYS = huoZiYinShua("./settings.json")
-        # 导出音频
-        file_path = os.path.join(tempOutputPath, id + ".wav")
-        HZYS.export(rawData,
-                    filePath=file_path,
-                    inYsddMode=inYsddMode,
-                    norm=norm,
-                    reverse=reverse,
-                    speedMult=speedMult,
-                    pitchMult=pitchMult)
-        # 返回URL
-        file_url = url_for('static', filename='tempAudioOutput/' + id + '.wav', _external=True)
-        return jsonify({"code": 200, "id": id, "file_url": file_url}), 200
-    except Exception as e:
-        print(e)
-        return jsonify({"code": 400, "message": "生成失败"}), 400
+        HZYS = huoZiYinShua(audio_source)
+        file_path = temp_output_path / f"{id}.wav"
+        HZYS.export(
+            text,
+            filePath=str(file_path),
+            inYsddMode=inYsddMode,
+            norm=norm,
+            reverse=reverse,
+            speedMult=speedMult,
+            pitchMult=pitchMult,
+        )
 
-# 用户发出下载音频的请求
-@app.route('/get/<id>.wav')
-def get_audio(id):
-    try:
-        with open(tempOutputPath + id + ".wav", 'rb') as f:
-            audio = f.read()
-        response = make_response(audio)
-        response.content_type = "audio/wav"
-        return response
-    except:
-        return render_template("fileNotFound.html"), 404
+        # 构造文件 URL
+        file_url = str(request.url_for("get_audio", file_name=f"{id}.wav"))
 
-# 新增API接口，通过GET请求生成音频并返回本地文件的绝对地址
-@app.route('/api/make', methods=['GET', 'POST'])
-def api_make():
-    if request.method == 'POST':
-        rawData = request.form.get("text")
-        inYsddMode = request.form.get("inYsddMode") == "true"
-        norm = request.form.get("norm") == "true"
-        reverse = request.form.get("reverse") == "true"
-        speedMult = float(request.form.get("speedMult", 1.0))
-        pitchMult = float(request.form.get("pitchMult", 1.0))
-    else:
-        rawData = request.args.get("text")
-        inYsddMode = request.args.get("inYsddMode") == "true"
-        norm = request.args.get("norm") == "true"
-        reverse = request.args.get("reverse") == "true"
-        speedMult = float(request.args.get("speedMult", 1.0))
-        pitchMult = float(request.args.get("pitchMult", 1.0))
-    if len(rawData) > 100:
-        return jsonify({"code": 400, "message": "憋刷辣！"}), 400
-    if (speedMult < 0.5) or (speedMult > 2) or (pitchMult < 0.5) or (pitchMult > 2):
-        return jsonify({"code": 400, "message": "你在搞什么飞机？"}), 400
-    try:
-        id = makeid()
-        HZYS = huoZiYinShua("./settings.json")
-        file_path = os.path.join(tempOutputPath, id + ".wav")
-        HZYS.export(rawData,
-                    filePath=file_path,
-                    inYsddMode=inYsddMode,
-                    norm=norm,
-                    reverse=reverse,
-                    speedMult=speedMult,
-                    pitchMult=pitchMult)
-        file_url = url_for('static', filename='tempAudioOutput/' + id + '.wav', _external=True)
-        return jsonify({"code": 200, "id": id, "file_url": file_url}), 200
+        return JSONResponse(
+            status_code=200,
+            content={"code": 200, "id": id, "file_url": file_url},
+        )
+
     except Exception as e:
-        print(e)
-        return jsonify({"code": 400, "message": "生成失败"}), 400
+        hzysLogger.error("生成失败: %s", e)
+        return JSONResponse(status_code=400, content={"code": 400, "message": "生成失败"})
 
 if __name__ == '__main__':
-    Thread(target=clearCache, args=()).start()
-    app.run(port=8989, host='0.0.0.0')
+    from threading import Thread
+    # 启动缓存清理
+    Thread(target=clear_cache, daemon=True).start()
+    # 启动应用
+    from uvicorn import run
+    run(app,port=config["app"]["port"], host=config["app"]["host"])

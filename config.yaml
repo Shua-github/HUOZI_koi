@@ -1,0 +1,22 @@
+# 应用程序配置
+app:
+  port: 8989          # 端口
+  host: "0.0.0.0"       # 监听地址
+
+# 文件路径配置
+paths:
+  audio_path: "./audio/"                  # 印刷音频来源
+  temp_output_path: "./tempAudioOutput/"  # 临时文件目录
+
+# 日志配置
+logging:
+  log_path: "./logs/"
+  log_name: "record.log"  
+  level: DEBUG             # 日志级别: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s, %(message)s"
+  encoding: utf8           # 日志文件编码
+
+# 清理任务配置
+cleanup:
+  interval: 60            # 清理任务执行间隔(秒)
+  file_lifetime: 600      # 文件存活时间(秒)

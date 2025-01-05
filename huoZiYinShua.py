@@ -1,45 +1,45 @@
 # -*- coding: UTF-8 -*-
+
 #鬼畜音源的活字印刷
+
 #作者：DSP_8192
+
+#--------------------------------------------
+
+#导包
 
 import soundfile as sf
 import psola
 import numpy as np
-from playsound import playsound
 from pypinyin import lazy_pinyin
-import json
 from pathlib import Path
 
-
-
-
 #--------------------------------------------
+
 #全局变量
+
+
 #--------------------------------------------
+
 #目标采样率
+
 _targetSR = 44100
 
-
-
-
 #--------------------------------------------
+
 #自定义函数
-#--------------------------------------------
+
 #文件路径转文件夹路径
 def _fileName2FolderName(fileName):
 	for i in range(len(fileName)-1, -1, -1):
 		if fileName[i] == '\\' or fileName[i] == '/':
 			return fileName[0:i+1]
-
-
-
+		
 #标准化音频，统一音量
 def _normalizeAudio(data):
 	rms = np.sqrt(np.mean(data**2))
 	normData = data / rms * 0.2
 	return normData
-
-
 
 #读取音频文件
 def _loadAudio(fileDir, norm):
@@ -58,8 +58,6 @@ def _loadAudio(fileDir, norm):
 	if norm:
 		data = _normalizeAudio(data)
 	return data
-
-
 
 #改变音高和速度
 def _modifyPitchAndSpeed(data, pitchMultiple, speedMultiple):
@@ -86,67 +84,88 @@ def _modifyPitchAndSpeed(data, pitchMultiple, speedMultiple):
 		step2 = np.interp(np.array(range(newLength)), np.linspace(0,newLength-1,len(step1)), step1)
 		return step2
 
-
-
-
 #--------------------------------------------
+
 #活字印刷类
+
 #--------------------------------------------
 class huoZiYinShua:
-	def __init__(self, configFileLoc):
+	def __init__(self, audio_source):
 		try:
-			self.config(configFileLoc)
+			self.config(audio_source)
 			self.__configSucceed = True
 		except Exception as e:
 			self.__configSucceed = False
 			print(e)		
 
-
-
 	#配置是否成功
 	def configSucceed(self):
 		return self.__configSucceed
 
-
-
 	#配置
-	def config(self, configFileLoc):
-		#读取设置文件
-		configFile = open(configFileLoc, encoding="utf8")
-		configuration = json.load(configFile)
-		configFile.close()
-
-		dictFile = open(configuration["dictFile"], encoding="utf8")					#读取单字词典 (json)
-		ysddTableFile = open(configuration["ysddTableFile"], encoding="utf8")		#读取原声大碟文本与文件名对照表 (json)
-
-		self.__voicePath = configuration["sourceDirectory"]					#单字音频文件存放目录
-		self.__ysddPath = configuration["ysddSourceDirectory"]				#原声大碟音频文件存放目录
-		self.__dictionary = json.load(dictFile)								#定义非中文字符读法的词典
-		self.__ysddTable = json.load(ysddTableFile)							#原声大碟文本与文件名对照表
+	def config(self,audio_source):
+		self.__voicePath = audio_source					#单字音频文件存放目录
+		self.__ysddPath = audio_source			#原声大碟音频文件存放目录
+		self.__dictionary = {
+	"a": "ei",
+	"b": "bi",
+	"c": "xi",
+	"d": "di",
+	"e": "yi",
+	"f": "ai fu",
+	"g": "ji",
+	"h": "ai chi",
+	"i": "ai",
+	"j": "zhei",
+	"k": "kei",
+	"l": "ai lu",
+	"m": "ai mu",
+	"n": "en",
+	"o": "ou",
+	"p": "pi",
+	"q": "kiu",
+	"r": "a",
+	"s": "ai si",
+	"t": "ti",
+	"u": "you",
+	"v": "wei",
+	"w": "da bu liu",
+	"x": "ai ke si",
+	"y": "wai",
+	"z": "zei",
+	"0": "ling",
+	"1": "yi",
+	"2": "er",
+	"3": "san",
+	"4": "si",
+	"5": "wu",
+	"6": "liu",
+	"7": "qi",
+	"8": "ba",
+	"9": "jiu"
+}								#定义非中文字符读法的词典
+		self.__ysddTable = 	{
+	"米浴说的道理": "miyu",
+	"啊米浴说的道理": "miyu",
+	"大家好啊": "djha",
+	"我是说的道理": "wssddl",
+	"今天来点大家想看的东西": "jtlaidian",
+	"今天来点儿大家想看的东西": "jtlaidian",
+	"说的道理": "sddl",
+	"波比是我爹": "bobi",
+	"啊嘛波比是我爹": "bobi"
+}						#原声大碟文本与文件名对照表
 
 		self.__ysddTable = sorted(self.__ysddTable.items(), key=lambda x:len(x[0]), reverse=True)	#从长到短排序
 		self.__ysddTable = dict(self.__ysddTable)
 
-
-	
 	#直接导出
 	def export(self, rawData, filePath="./Output.wav", inYsddMode=False,
 				pitchMult=1, speedMult=1, norm=False, reverse=False):		
 		self.__concatenate(rawData, inYsddMode, pitchMult, speedMult, norm, reverse)
 		self.__export(filePath)
 		print("已导出到" + filePath + "下")
-	
-	
-	
-	#直接播放
-	def directPlay(self, rawData, tempPath="./HZYSTempOutput/temp.wav",
-					inYsddMode=False, pitchMult=1, speedMult=1, norm=False, reverse=False):
-		self.__concatenate(rawData, inYsddMode, pitchMult, speedMult, norm, reverse)
-		self.__export(tempPath)
-		playsound(tempPath)
-	
-	
-	
+		
 	#生成中间文件
 	def __concatenate(self, rawData, inYsddMode, pitchMult, speedMult, norm, reverse):
 		missingPinyin = []

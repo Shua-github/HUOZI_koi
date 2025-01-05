@@ -1,0 +1,43 @@
+name: Build with Nuitka and Upload Artifact
+
+on:
+  push:
+    branches:
+      - main  # 触发主分支的推送
+
+jobs:
+  build:
+    runs-on: windows-latest  # 选择 Ubuntu 作为 CI 环境
+
+    steps:
+      # 1. Checkout代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 设置Python环境
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # 设置Python版本
+          architecture: 'x64' 
+
+      # 3. 安装项目依赖
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. 使用Nuitka打包Python代码
+      - name: Compile with Nuitka
+        uses: Nuitka/Nuitka-Action@v1.1
+        with:
+          nuitka-version: main
+          script-name: app.py
+
+      # 5. 上传构建的文件为Artifact
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app  # Artifact名称
+          path: dist/
+          include-hidden-files: true         # 上传dist文件夹中的所有文件
